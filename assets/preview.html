@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="vi">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SRT 白板动画 · 区域编辑器（无需服务器）</title>
+<title>Hoạt ảnh bảng trắng SRT · Trình chỉnh sửa vùng</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #14161a; color: #e6e8ec; }
@@ -29,6 +29,11 @@
   .side h3 { margin: 12px 0 6px; font-size: 13px; color: #cfd4dc; }
   .side h3:first-child { margin-top: 4px; }
   .tip { margin: 0 0 6px; }
+  .mapping { display: grid; gap: 6px; margin: 6px 0 10px; }
+  .mapping-row { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 7px; background: #22262e; border-radius: 5px; }
+  .mapping-row label { color: #aeb6c2; font-size: 11px; }
+  .mapping-row select { width: 100%; max-width: none; font-size: 11px; }
+  .warning { padding: 8px; margin: 6px 0; border: 1px solid #a66b19; border-radius: 5px; color: #ffd58a; background: #382b16; font-size: 12px; line-height: 1.5; }
   .elist, .sublist { list-style: none; margin: 0 0 6px; padding: 0; font-size: 12.5px; }
   .elist li { padding: 7px 9px; border-radius: 5px; margin-bottom: 3px; background: #22262e; cursor: grab; display: flex; gap: 8px; align-items: baseline; }
   .elist li.sel { background: #4a3a14; outline: 1px solid #f5a623; }
@@ -50,6 +55,15 @@
   textarea#f_sub { width: 100%; background: #262a33; color: #e6e8ec; border: 1px solid #3a3f4a; border-radius: 5px; padding: 6px 7px; font-size: 12.5px; resize: vertical; font-family: inherit; }
   textarea#f_sub:disabled { opacity: .55; }
   .row-btns { display: flex; gap: 8px; margin: 10px 0; }
+  .tts-box { padding: 10px; border: 1px solid #343a46; border-radius: 7px; background: #20242c; }
+  .tts-box textarea { width: 100%; min-height: 76px; resize: vertical; background: #171a20; color: #e6e8ec; border: 1px solid #3a3f4a; border-radius: 5px; padding: 7px; font: 12.5px inherit; }
+  .tts-box select { width: 100%; max-width: none; margin: 5px 0; }
+  .tts-box button { width: 100%; margin-top: 5px; }
+  .tts-box audio { width: 100%; margin-top: 8px; }
+  .clone-box { margin: 9px 0 5px; padding: 8px; border: 1px dashed #5f68a3; border-radius: 6px; background: #191c28; }
+  .clone-box[hidden] { display: none; }
+  .clone-box input[type="text"], .clone-box input[type="file"] { width: 100%; margin: 5px 0; background: #171a20; color: #e6e8ec; border: 1px solid #3a3f4a; border-radius: 5px; padding: 6px; font: 12px inherit; }
+  .clone-consent { display: flex; gap: 6px; align-items: flex-start; margin-top: 5px; color: #aeb6c2; font-size: 11px; line-height: 1.35; }
   .controls { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #1c1f26; border-top: 1px solid #2a2e37; }
   .play { flex: 0 0 auto; width: 38px; height: 38px; font-size: 15px; }
   #timeline { flex: 1; accent-color: #3b82f6; }
@@ -57,61 +71,121 @@
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #22c55e; color: #062; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 9; }
   .toast.show { opacity: 1; }
   .toast.err { background: #ef4444; color: #fff; }
+  .video-preview { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(4,6,10,.82); }
+  .video-preview[hidden] { display: none; }
+  .video-preview-card { width: min(1100px, 100%); max-height: calc(100vh - 48px); overflow: auto; padding: 18px; border: 1px solid #3a3f4a; border-radius: 10px; background: #1c1f26; box-shadow: 0 20px 70px rgba(0,0,0,.6); }
+  .video-preview-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .video-preview-head h2 { margin: 0; font-size: 17px; }
+  .video-preview video { display: block; width: 100%; max-height: min(70vh, 720px); background: #000; border-radius: 6px; }
+  .video-preview-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 </style>
 </head>
 <body>
 <div class="topbar">
-  <div class="brand">SRT 白板 · 区域编辑器</div>
-  <button id="openBtn" class="primary">打开文件夹…</button>
+  <div class="brand">SRT Bảng trắng · Chỉnh sửa vùng</div>
+  <button id="openBtn" class="primary">Mở thư mục…</button>
+  <button id="importSrtBtn">Nhập kịch bản / SRT</button>
+  <button id="addImageBtn">＋ Thêm ảnh vào dự án</button>
   <button id="prevBtn" disabled>‹</button>
   <select id="sceneSel" disabled></select>
   <button id="nextBtn" disabled>›</button>
   <span id="sceneCount" class="muted"></span>
-  <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="overlayToggle" checked> 区域框</label>
+  <label class="muted" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="overlayToggle" checked> Khung vùng</label>
   <span class="spacer"></span>
+  <label class="muted">Chất lượng
+    <select id="renderProfile" style="max-width:190px">
+      <option value="draft">Xem trước nhanh · 540p / 12 FPS</option>
+      <option value="studio" selected>Studio · 1080p / 24 FPS</option>
+      <option value="master">Master · 1920p / 30 FPS</option>
+    </select>
+  </label>
+  <button id="audioBtn">Nạp audio cho cảnh</button>
   <span id="dirtyFlag" class="dirty"></span>
-  <button id="saveBtn" disabled>保存本场景</button>
-  <button id="saveAllBtn" class="primary" disabled>全部保存</button>
+  <button id="saveBtn" disabled>Lưu cảnh này</button>
+  <button id="saveAllBtn" class="primary" disabled>Lưu tất cả</button>
+  <button id="renderBtn" class="primary" disabled>Xuất MP4 cảnh này</button>
+  <button id="renderProjectBtn" class="primary" disabled>Xuất MP4 toàn dự án</button>
 </div>
 
 <div class="body">
   <div class="stage-wrap">
     <div id="hint" class="hint">
-      点 <b>打开文件夹…</b> 选择存放线稿的目录（内含成对的 <code>&lt;名称&gt;.png</code> + <code>&lt;名称&gt;.annotation.json</code>）。<br><br>
-      载入后：默认显示完整图片和区域框；拖动方框整体移动、拖四角/四边缩放调 <code>region</code>；右侧精确改数值、方向、<b>开始/结束时间</b>与<b>字幕</b>；拖动模块列表可<b>调整顺序</b>。拖时间轴或按播放看<b>矩形代理揭示</b>（未开始区域不显示）。<br><br>
-      改完点 <b>保存本场景</b> / <b>全部保存</b> 写回原 <code>.annotation.json</code>（含每个区域的字幕）。<br>
-      <span class="muted">写回原文件需 Chrome / Edge（File System Access API）；其它浏览器将改为下载，请手动覆盖原文件。矩形代理只用于布局/时序；真实连续笔迹请用命令行 <code>render_stream_whiteboard.py</code> 渲染。</span>
+      <b>Quy trình làm video, 4 bước.</b><br><br>
+      <b>1. Nạp kịch bản:</b> nhập SRT để giữ nguyên mốc thời gian từng đoạn.<br><br>
+      <b>2. Ghép ảnh:</b> mở thư mục dự án, chọn cue SRT tương ứng cho từng ảnh ở bảng bên phải. Ứng dụng tự cảnh báo khi số ảnh và số đoạn SRT không khớp; bạn có thể gán lại thủ công.<br><br>
+      <b>3. Dàn cảnh:</b> thêm vùng, kéo khung lên đối tượng cần vẽ rồi tinh chỉnh theo thời gian nội bộ của cảnh. Mốc SRT chỉ dùng để ghép nội dung.<br><br>
+      <b>4. Âm thanh & xuất:</b> nạp audio hoặc tạo giọng đọc; Studio tự đồng bộ tốc độ vẽ theo audio và chừa 0,5 giây giữ hình cuối. Sau đó chọn <b>Xuất MP4 toàn dự án</b> để dựng và ghép các cảnh theo thứ tự.
     </div>
     <canvas id="canvas" hidden></canvas>
   </div>
   <aside class="side" id="side" hidden>
-    <h3>绘制模块 <span id="elemCount" class="muted"></span></h3>
-    <p class="tip muted">拖动列表项可调整绘制顺序</p>
+    <h3>Kịch bản & phụ đề</h3>
+    <p id="scriptSummary" class="tip muted">Chưa nạp kịch bản. Nhập SRT để xem lời thoại theo timeline.</p>
+    <textarea id="scriptText" rows="5" placeholder="Dán lời thoại ChatGPT vào đây hoặc nhập tệp SRT…" style="width:100%;background:#262a33;color:#e6e8ec;border:1px solid #3a3f4a;border-radius:5px;padding:7px;font:12.5px inherit;resize:vertical"></textarea>
+    <div class="row-btns"><button id="applyScriptBtn">Dùng lời thoại này</button></div>
+    <div class="row-btns"><button id="saveScriptBtn" disabled>Lưu kịch bản vào dự án</button></div>
+    <h3>Giọng đọc tiếng Việt</h3>
+    <div class="tts-box">
+      <p class="tip muted">Lời thoại cảnh đang chọn (có thể sửa trước khi tạo):</p>
+      <textarea id="ttsText" placeholder="Nạp kịch bản hoặc nhập lời đọc cho cảnh này…"></textarea>
+      <label class="muted" for="ttsEngine">Bộ máy</label>
+      <select id="ttsEngine">
+        <option value="vieneu">VieNeu-TTS · tự nhiên, 48 kHz, CPU</option>
+        <option value="kokoro">Kokoro-Vietnamese</option>
+      </select>
+      <label class="muted" for="ttsSpeaker">Giọng đọc</label>
+      <select id="ttsSpeaker"></select>
+      <div id="cloneBox" class="clone-box">
+        <p class="tip muted">Tạo giọng mẫu riêng chạy trên laptop: chọn đoạn thu âm rõ tiếng Việt 3–8 giây, một người nói, ít nhạc/nhiễu. File gốc không rời khỏi máy.</p>
+        <input id="cloneRefFile" type="file" accept="audio/wav,audio/mpeg,audio/mp4,audio/ogg,audio/flac,.wav,.mp3,.m4a,.ogg,.flac">
+        <input id="cloneVoiceName" type="text" maxlength="60" placeholder="Tên giọng mới (VD: Giọng của tôi)">
+        <label class="clone-consent"><input id="cloneConsent" type="checkbox"> Tôi có quyền sử dụng giọng trong file này để tạo giọng mẫu.</label>
+        <button id="cloneVoiceBtn" type="button">Tạo & thêm vào danh sách giọng</button>
+      </div>
+      <label class="clone-consent" title="Chỉ bật sau khi VieNeu đã tải model ít nhất một lần."><input id="ttsOffline" type="checkbox"> Chỉ chạy offline (không cho phép tải model từ Internet)</label>
+      <label class="muted" for="ttsSpeed">Nhịp đọc <span id="ttsSpeedValue">1.00×</span> (nhanh hơn khi tăng)</label>
+      <input id="ttsSpeed" type="range" min="0.75" max="1.25" step="0.05" value="1.00" style="width:100%;accent-color:#3b82f6">
+      <button id="ttsBtn" class="primary">Tạo lời đọc WAV cho cảnh</button>
+      <button id="syncAudioBtn" disabled>Khớp lại thời lượng vẽ theo audio</button>
+      <p id="audioTiming" class="tip muted">Chưa có audio để đồng bộ thời lượng cảnh.</p>
+      <p id="ttsEngineHelp" class="tip muted">VieNeu-TTS chạy cục bộ bằng CPU/ONNX trên máy này; lần đầu cần mạng để tải model. Mã nguồn phát hành Apache-2.0; hãy kiểm tra riêng giấy phép model trước khi phát hành thương mại.</p>
+      <audio id="ttsPreview" controls hidden></audio>
+    </div>
+    <ul id="cueList" class="sublist"></ul>
+    <h3>Cảnh đề xuất</h3>
+    <ul id="storyScenes" class="sublist"></ul>
+    <h3>Ghép lời thoại ↔ ảnh</h3>
+    <p id="mappingSummary" class="tip muted">Nạp SRT và mở thư mục ảnh để ghép các đoạn theo nội dung.</p>
+    <div id="mappingWarning" class="warning" hidden></div>
+    <div id="cueMapping" class="mapping"></div>
+    <button id="autoMapBtn">Tự ghép SRT vào ảnh / vùng</button>
+    <h3>Mô-đun vẽ <span id="elemCount" class="muted"></span></h3>
+    <p class="tip muted">Kéo mục trong danh sách để đổi thứ tự vẽ</p>
     <ul id="elist" class="elist"></ul>
     <div class="row-btns">
-      <button id="addBtn">＋ 新增模块</button>
-      <button id="delBtn" disabled>删除选中</button>
+      <button id="addBtn">＋ Thêm vùng cho lời thoại tiếp theo</button>
+      <button id="delBtn" disabled>Xóa mục chọn</button>
     </div>
-    <h3>选中模块</h3>
+    <h3>Mô-đun đã chọn</h3>
     <div class="fields" id="fields">
-      <label>名称</label><input type="text" id="f_label" disabled>
+      <label>Tên</label><input type="text" id="f_label" disabled>
       <label>x</label><input type="number" id="f_x" min="0" disabled>
       <label>y</label><input type="number" id="f_y" min="0" disabled>
-      <label>宽</label><input type="number" id="f_w" min="1" disabled>
-      <label>高</label><input type="number" id="f_h" min="1" disabled>
-      <label>方向</label>
+      <label>Rộng</label><input type="number" id="f_w" min="1" disabled>
+      <label>Cao</label><input type="number" id="f_h" min="1" disabled>
+      <label>Hướng</label>
       <select id="f_dir" disabled>
-        <option value="top_to_bottom">从上至下</option>
-        <option value="bottom_to_top">从下至上</option>
-        <option value="left_to_right">从左至右</option>
-        <option value="right_to_left">从右至左</option>
+        <option value="top_to_bottom">Từ trên xuống</option>
+        <option value="bottom_to_top">Từ dưới lên</option>
+        <option value="left_to_right">Từ trái sang phải</option>
+        <option value="right_to_left">Từ phải sang trái</option>
       </select>
-      <label>开始(ms)</label><input type="number" id="f_start" min="0" step="100" disabled>
-      <label>结束(ms)</label><input type="number" id="f_end" min="0" step="100" disabled>
-      <label>时长(ms)</label><input type="number" id="f_dur" disabled>
+      <label title="Mốc nội bộ của cảnh, không sửa thời gian SRT">Bắt đầu (ms · cảnh)</label><input type="number" id="f_start" min="0" step="100" disabled>
+      <label title="Mốc nội bộ của cảnh, không sửa thời gian SRT">Kết thúc (ms · cảnh)</label><input type="number" id="f_end" min="0" step="100" disabled>
+      <label>Thời lượng (ms)</label><input type="number" id="f_dur" disabled>
     </div>
-    <h3>字幕</h3>
-    <textarea id="f_sub" rows="3" placeholder="该区域对应的字幕（保存进 annotation.json）" disabled></textarea>
+    <h3>Phụ đề</h3>
+    <textarea id="f_sub" rows="3" placeholder="Phụ đề tương ứng với vùng này (lưu vào annotation.json)" disabled></textarea>
     <ul id="sublist" class="sublist"></ul>
   </aside>
 </div>
@@ -122,6 +196,16 @@
   <span id="tlabel" class="tlabel">0.00s / 0.00s</span>
 </div>
 <div id="toast" class="toast"></div>
+<div id="videoPreview" class="video-preview" hidden role="dialog" aria-modal="true" aria-labelledby="videoPreviewTitle">
+  <div class="video-preview-card">
+    <div class="video-preview-head"><div><h2 id="videoPreviewTitle">Xem trước video</h2><p id="videoPreviewInfo" class="tip muted"></p></div><button id="closeVideoPreview" aria-label="Đóng xem trước">✕</button></div>
+    <video id="videoPreviewPlayer" controls playsinline></video>
+    <div class="video-preview-actions"><button id="cancelVideoDownload">Đóng</button><button id="downloadVideoBtn" class="primary">Tải MP4 này</button></div>
+  </div>
+</div>
+<input id="newImageInput" type="file" accept="image/png,image/jpeg" hidden>
+<input id="audioInput" type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/x-m4a" hidden>
+<input id="srtInput" type="file" accept=".srt,.txt,text/plain" hidden>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -135,39 +219,447 @@ const hand = new Image(); hand.src = './drawing-hand.png';
 
 const S = { scenes: [], idx: -1, cfg: null, cfgHandle: null, dirHandle: null,
             source: null, paper: '#fdf0d0', time: 0, sel: 0, playing: false, last: 0,
-            showOverlay: true, dirty: new Set(), drag: null, dragRow: -1 };
+            showOverlay: true, dirty: new Set(), drag: null, dragRow: -1, audioByScene: new Map() };
+S.cues = []; S.storyScenes = []; S.scriptName = ''; S.srtHandle = null; S.scriptSaveTimer = null;
+const AUDIO_HOLD_MS = 500;
 
 const els = () => S.cfg ? S.cfg.elements : [];
 const endMs = e => e.reveal.startMs + e.reveal.durationMs;
 function totalMs() {
   const arr = els();
   const maxEnd = arr.length ? Math.max(...arr.map(endMs)) : 0;
-  return Math.max(S.cfg && S.cfg.sceneDurationMs || 0, maxEnd + 500, 1000);
+  const mappedCue = assignedCue(S.scenes[S.idx]);
+  return Math.max(S.cfg && S.cfg.sceneDurationMs || 0, maxEnd + (mappedCue ? 0 : 500), 1000);
 }
 
 // ---------- 打开文件夹 ----------
 $('openBtn').addEventListener('click', openDir);
+function resetProjectState() {
+  pause(); clearTimeout(S.scriptSaveTimer);
+  S.scenes.forEach(scene => { if (scene.imgUrl) URL.revokeObjectURL(scene.imgUrl); });
+  S.scenes = []; S.idx = -1; S.cfg = null; S.cfgHandle = null; S.source = null;
+  S.cues = []; S.storyScenes = []; S.scriptName = ''; S.srtHandle = null;
+  S.audioByScene = new Map(); S.dirty.clear(); S.time = 0; S.sel = 0;
+  $('scriptText').value = ''; $('ttsText').value = '';
+  $('scriptSummary').textContent = 'Chưa nạp kịch bản. Nhập SRT để xem lời thoại theo timeline.';
+  $('cueList').replaceChildren(); $('storyScenes').replaceChildren(); $('cueMapping').replaceChildren();
+  $('mappingWarning').hidden = true; $('mappingSummary').textContent = 'Nạp SRT và mở thư mục ảnh để ghép các đoạn theo nội dung.';
+  const preview = $('ttsPreview'); if (preview.dataset.url) URL.revokeObjectURL(preview.dataset.url); preview.removeAttribute('src'); preview.hidden = true;
+}
 async function openDir() {
   try {
     if (canFS) {
       const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+      resetProjectState();
       S.dirHandle = dir;
       const handles = {};
       for await (const [name, h] of dir.entries()) if (h.kind === 'file') handles[name] = h;
+      const srts = Object.keys(handles).filter(n => n.toLowerCase().endsWith('.srt')).sort();
+      if (srts.length === 1) await useSrtFile(await handles[srts[0]].getFile(), srts[0], handles[srts[0]]);
+      else if (srts.length > 1) toast('Thư mục có nhiều file SRT. Hãy bấm “Nhập kịch bản / SRT” để chọn đúng file.', true);
       await loadPairs(Object.keys(handles), n => handles[n].getFile(), n => handles[n]);
+      $('saveScriptBtn').disabled = S.cues.length === 0;
+      if (S.cues.length) renderScript();
     } else { fi.click(); }
-  } catch (e) { if (e && e.name !== 'AbortError') toast('打开失败：' + e.message, true); }
+  } catch (e) { if (e && e.name !== 'AbortError') toast('Không thể mở: ' + e.message, true); }
 }
 const fi = document.createElement('input');
 fi.type = 'file'; fi.webkitdirectory = true; fi.multiple = true; fi.hidden = true;
 document.body.appendChild(fi);
 fi.addEventListener('change', async () => {
   const files = {}; [...fi.files].forEach(f => files[f.name] = f);
+  if (!Object.keys(files).length) return;
+  resetProjectState();
   S.dirHandle = null;
+  const srts = Object.keys(files).filter(n => n.toLowerCase().endsWith('.srt'));
+  if (srts.length === 1) await useSrtFile(files[srts[0]], srts[0]);
   await loadPairs(Object.keys(files), n => files[n], () => null);
 });
+const newImageInput = $('newImageInput'), audioInput = $('audioInput');
+const srtInput = $('srtInput');
+$('importSrtBtn').addEventListener('click', () => srtInput.click());
+srtInput.addEventListener('change', async () => {
+  const file = srtInput.files[0]; srtInput.value = '';
+  if (!file) return;
+  await useSrtFile(file, file.name);
+});
+async function useSrtFile(file, name, handle = null) {
+  try {
+    const source = await file.text();
+    S.cues = parseSrt(source);
+    if (!S.cues.length) {
+      const text = source.trim();
+      if (!text) throw new Error('Tệp không có nội dung.');
+      const duration = Math.max(8000, Math.ceil(text.split(/\s+/).length / 2.2 * 60000));
+      S.cues = [{ index: 1, startMs: 0, endMs: duration, text }];
+    }
+    S.storyScenes = groupCueScenes(S.cues, 30, 25, 35); S.scriptName = name; S.srtHandle = handle;
+    mapCuesByOrder(true);
+    $('scriptText').value = S.cues.map(c => c.text).join('\n');
+    $('scriptSummary').textContent = `${name} · ${S.cues.length} lời thoại · ${formatTime(S.cues.at(-1).endMs)} · ${S.storyScenes.length} cảnh đề xuất`;
+    $('saveScriptBtn').disabled = !S.dirHandle; renderScript();
+    if (S.idx >= 0) loadScene(S.idx);
+    toast('Đã nạp kịch bản. Kiểm tra bảng ghép lời thoại với ảnh ở bên phải.');
+  } catch (e) { toast(`Không thể nạp kịch bản: ${e.message}`, true); }
+}
+$('saveScriptBtn').addEventListener('click', saveScriptToProject);
+$('applyScriptBtn').addEventListener('click', () => {
+  const text = $('scriptText').value.trim();
+  if (!text) { toast('Dán lời thoại vào ô kịch bản trước.', true); return; }
+  const parsed = parseSrt(text);
+  if (parsed.length) { S.cues = parsed; if (!S.scriptName?.toLowerCase().endsWith('.srt')) S.scriptName = 'loi-thoai.srt'; }
+  else {
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (S.cues.length > 1 && lines.length === S.cues.length) {
+      S.cues = S.cues.map((cue, i) => ({ ...cue, text: lines[i] }));
+    } else {
+      const duration = Math.max(8000, Math.ceil(text.split(/\s+/).length / 2.2 * 60000));
+      S.cues = [{ index: 1, startMs: 0, endMs: duration, text }]; if (!S.scriptName) S.scriptName = 'loi-thoai.txt';
+    }
+  }
+  S.storyScenes = groupCueScenes(S.cues, 30, 25, 35);
+  mapCuesByOrder(true);
+  $('saveScriptBtn').disabled = !S.dirHandle;
+  $('scriptSummary').textContent = `${S.cues.length} lời thoại · ${formatTime(S.cues.at(-1).endMs)} · ${S.storyScenes.length} cảnh đề xuất`;
+  $('saveScriptBtn').disabled = !S.dirHandle; renderScript(); scheduleSrtSave(); toast('Đã đưa lời thoại vào timeline dự án.');
+});
+$('scriptText').addEventListener('change', () => $('applyScriptBtn').click());
+function parseSrt(source) {
+  const timeRx = /(?:(\d+):)?(\d{2}):(\d{2})[,.](\d{1,3})/g, cues = [];
+  for (const block of source.replace(/^\uFEFF/, '').split(/\r?\n\s*\r?\n/)) {
+    const lines = block.split(/\r?\n/).filter(line => line.trim()), timeLine = lines.find(line => line.includes('-->'));
+    if (!timeLine) continue;
+    const times = [...timeLine.matchAll(timeRx)]; if (times.length < 2) continue;
+    const ms = m => (((+(m[1] || 0) * 60 + +m[2]) * 60 + +m[3]) * 1000) + +(m[4].padEnd(3, '0'));
+    const text = lines.slice(lines.indexOf(timeLine) + 1).join(' ').trim();
+    if (text) cues.push({ index: cues.length + 1, startMs: ms(times[0]), endMs: ms(times[1]), text });
+  }
+  return cues;
+}
+function groupCueScenes(cues, targetSec, minSec, maxSec) {
+  const out = []; let bucket = [];
+  const flush = () => { if (bucket.length) { out.push({ index: out.length + 1, startMs: bucket[0].startMs, endMs: bucket.at(-1).endMs, cues: [...bucket] }); bucket = []; } };
+  for (const cue of cues) {
+    if (bucket.length && cue.endMs - bucket[0].startMs > maxSec * 1000) flush();
+    bucket.push(cue); const span = bucket.at(-1).endMs - bucket[0].startMs;
+    if (span >= targetSec * 1000 && span >= minSec * 1000) flush();
+  }
+  flush(); return out;
+}
+function formatTime(ms) { const seconds = Math.floor(ms / 1000); return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; }
+function renderScript() {
+  $('cueList').innerHTML = S.cues.map(c => `<li><span class="o">${formatTime(c.startMs)}</span><span class="s">${escapeHtml(c.text)}</span></li>`).join('');
+  $('storyScenes').innerHTML = S.storyScenes.map(s => `<li><span class="o">Cảnh ${String(s.index).padStart(2, '0')} · ${formatTime(s.startMs)}–${formatTime(s.endMs)}</span><span class="s">${escapeHtml(s.cues.map(c => c.text).join(' '))}</span></li>`).join('');
+  renderCueMappings();
+}
+function assignedCueIndexes(scene) {
+  if (Array.isArray(scene?.cueIndexes)) return scene.cueIndexes.filter(index => Number.isInteger(index) && S.cues[index]);
+  return Number.isInteger(scene?.cueIndex) && S.cues[scene.cueIndex] ? [scene.cueIndex] : [];
+}
+function assignedCues(scene) { return assignedCueIndexes(scene).map(index => S.cues[index]); }
+function assignedCue(scene) { return assignedCues(scene)[0] || null; }
+function sceneSpeechText(scene) { return assignedCues(scene).map(cue => cue.text).join(' ').trim(); }
+function projectOffsetMs(scene = S.scenes[S.idx]) {
+  const cue = assignedCue(scene);
+  if (cue) return cue.startMs;
+  const index = S.scenes.indexOf(scene);
+  return index > 0 ? S.scenes.slice(0, index).reduce((sum, s) => sum + (s.cfg?.sceneDurationMs || 0), 0) : 0;
+}
+function mapCuesByOrder(reset = false) {
+  const sceneCount = S.scenes.length, cueCount = S.cues.length;
+  S.scenes.forEach((scene, i) => {
+    if (!reset && assignedCueIndexes(scene).length) return;
+    if (!cueCount) { scene.cueIndexes = []; scene.cueIndex = -1; return; }
+    // Keep one cue per image while there are enough images. If there are fewer
+    // images, assign consecutive, balanced cue groups to each image.
+    const start = sceneCount >= cueCount ? i : Math.floor(i * cueCount / sceneCount);
+    const end = sceneCount >= cueCount ? Math.min(i + 1, cueCount) : Math.floor((i + 1) * cueCount / sceneCount);
+    scene.cueIndexes = Array.from({ length: Math.max(0, end - start) }, (_, offset) => start + offset);
+    scene.cueIndex = scene.cueIndexes[0] ?? -1; // compatibility with older annotation files
+  });
+  S.scenes.forEach((scene, i) => {
+    if (scene.cfg && assignedCueIndexes(scene).length) {
+      ensureCueRegions(scene, reset); applyCueTiming(scene, true); S.dirty.add(i);
+    }
+  });
+  updateSaveBtns();
+  renderCueMappings();
+}
+function defaultCueRegion(scene, cue, position, count) {
+  const W = scene.cfg.canvas.width, H = scene.cfg.canvas.height;
+  return { id: `cue_${cue.index}`, label: cue.text.slice(0, 32) || `Đoạn SRT ${cue.index}`,
+    sequence: position + 1, narrativeRole: `Lời thoại SRT ${cue.index}`, subtitle: cue.text, cueIndex: cue.index - 1,
+    autoCueRegion: true,
+    region: { x: Math.round(W * .1), y: Math.round(H * (.08 + (.84 * position / Math.max(1, count)))), width: Math.round(W * .8), height: Math.max(80, Math.round(H * .72 / Math.max(1, count))) },
+    reveal: { direction: 'top_to_bottom', startMs: 0, durationMs: 1000, maskPaddingPx: 22, protectedRegions: [] }, handPath: {} };
+}
+function ensureCueRegions(scene, replaceExisting = false) {
+  if (!scene.cfg) return;
+  const cues = assignedCues(scene); if (!cues.length) return;
+  const elements = Array.isArray(scene.cfg.elements) ? scene.cfg.elements : (scene.cfg.elements = []);
+  const allAuto = elements.every(element => element.autoCueRegion);
+  if (!elements.length || (replaceExisting && allAuto)) {
+    scene.cfg.elements = cues.map((cue, index) => defaultCueRegion(scene, cue, index, cues.length));
+    scene.cfg.elements.forEach(syncHandPath);
+  }
+}
+function applyCueTiming(scene, updateModules = true) {
+  const cues = assignedCues(scene), cue = cues[0]; if (!cue || !scene.cfg) return;
+  const cueDuration = Math.max(1000, cues.at(-1).endMs - cue.startMs);
+  const audioDuration = Number(scene.cfg.audioDurationMs) || 0;
+  const audioTiming = audioDuration > 0;
+  const holdMs = Math.max(0, Number(scene.cfg.audioHoldMs) || AUDIO_HOLD_MS);
+  const revealWindow = Math.max(500, (audioTiming ? audioDuration : cueDuration) - (audioTiming ? 0 : AUDIO_HOLD_MS));
+  // Audio timing takes precedence for rendering. SRT remains untouched as the
+  // narrative reference, so changing a voice never changes subtitle timestamps.
+  const duration = audioTiming ? Math.max(1000, Math.round(audioDuration + holdMs)) : cueDuration;
+  scene.cfg.storyCueIndex = cue.index; scene.cfg.storyCueIndexes = cues.map(item => item.index);
+  scene.cfg.storyStartMs = cue.startMs;
+  scene.cfg.storyBasis = sceneSpeechText(scene);
+  scene.cfg.sceneDurationMs = duration;
+  if (updateModules && Array.isArray(scene.cfg.elements) && scene.cfg.elements.length) {
+    const ordered = [...scene.cfg.elements].sort((a,b) => (a.sequence || 0) - (b.sequence || 0));
+    const count = ordered.length;
+    const followsCueTiming = !audioTiming && count === cues.length && ordered.every(element => Number.isInteger(element.cueIndex) && S.cues[element.cueIndex]);
+    ordered.forEach((e, i) => {
+      const elementCue = Number.isInteger(e.cueIndex) ? S.cues[e.cueIndex] : null;
+      const start = followsCueTiming ? Math.max(0, elementCue.startMs - cue.startMs) : Math.floor(revealWindow * i / count);
+      const next = followsCueTiming ? Math.max(start + 100, elementCue.endMs - cue.startMs) : Math.floor(revealWindow * (i + 1) / count);
+      e.reveal.startMs = start; e.reveal.durationMs = Math.max(100, next - start);
+      if (elementCue) { e.subtitle = elementCue.text; e.label = elementCue.text.slice(0, 32) || e.label; }
+      else if (count === 1) e.subtitle = sceneSpeechText(scene);
+    });
+  }
+  if (scene === S.scenes[S.idx]) { S.cfg = scene.cfg; syncEditor(); renderList(); renderSubs(); setTime(0); }
+}
+function renderCueMappings() {
+  const scenes = S.scenes;
+  $('mappingSummary').textContent = S.cues.length
+    ? `${S.cues.length} đoạn SRT · ${scenes.length} ảnh · ${scenes.filter(s => assignedCueIndexes(s).length).length} ảnh đã ghép`
+    : 'Nạp SRT và mở thư mục ảnh để ghép từng đoạn.';
+  const unassigned = scenes.filter(s => !assignedCue(s)).length;
+  $('autoMapBtn').disabled = !scenes.length || !S.cues.length;
+  const mismatch = S.cues.length && scenes.length !== S.cues.length;
+  $('mappingWarning').hidden = !mismatch && !unassigned;
+  $('mappingWarning').textContent = mismatch
+    ? `Số lượng chưa khớp: ${scenes.length} ảnh nhưng có ${S.cues.length} đoạn SRT. Hệ thống tự chia các đoạn SRT liên tiếp cho từng ảnh; mỗi đoạn trong một nhóm sẽ tạo một vùng lời thoại riêng.${unassigned ? ` ${unassigned} ảnh chưa được ghép.` : ''}`
+    : unassigned ? `${unassigned} ảnh chưa ghép lời thoại. Chọn một đoạn hoặc để trống.` : '';
+  $('cueMapping').innerHTML = scenes.map((scene, i) => {
+    const indexes = assignedCueIndexes(scene), summary = indexes.length > 1 ? `Đang dùng các đoạn ${indexes.map(index => index + 1).join(', ')} → ${indexes.length} vùng` : '';
+    return `<div class="mapping-row"><label>${i+1}. ${escapeHtml(scene.name)}${summary ? ` · ${summary}` : ''}</label><select data-scene="${i}"><option value="-1">— Chưa ghép —</option>${S.cues.map((cue, ci) => `<option value="${ci}">${ci+1}. ${formatTime(cue.startMs)}–${formatTime(cue.endMs)} · ${escapeHtml(cue.text.slice(0, 58))}</option>`).join('')}</select></div>`;
+  }).join('');
+  $('cueMapping').querySelectorAll('select').forEach(select => {
+    const i = +select.dataset.scene; select.value = Number.isInteger(scenes[i].cueIndex) ? scenes[i].cueIndex : -1;
+    select.addEventListener('change', () => {
+      const scene = S.scenes[i], value = +select.value;
+      scene.cueIndexes = value >= 0 ? [value] : []; scene.cueIndex = value >= 0 ? value : -1;
+      if (scene.cfg && scene.cueIndex < 0) { delete scene.cfg.storyCueIndex; delete scene.cfg.storyCueIndexes; delete scene.cfg.storyStartMs; scene.cfg.storyBasis = ''; }
+      if (scene.cfg && scene.cueIndex >= 0) ensureCueRegions(scene, false);
+      if (scene.cfg) S.dirty.add(i);
+      mapCuesByOrder(false);
+      renderCueMappings();
+      if (i === S.idx) loadScene(i);
+      toast(scene.cueIndex >= 0 ? `Đã ghép ${scene.name} với đoạn SRT ${scene.cueIndex+1} và đồng bộ timeline.` : `Đã bỏ ghép lời thoại khỏi ${scene.name}.`);
+    });
+  });
+}
+$('autoMapBtn').addEventListener('click', () => { mapCuesByOrder(true); S.scenes.forEach((s,i) => { if (s.cfg) S.dirty.add(i); }); updateSaveBtns(); toast('Đã tự ghép: đủ ảnh thì một đoạn/ảnh; ít ảnh thì các đoạn liên tiếp thành vùng lời thoại trong ảnh.'); });
+async function saveScriptToProject(quiet = false) {
+  if (!S.dirHandle || !S.scriptName) return;
+  const time = ms => { const h=Math.floor(ms/3600000), m=Math.floor(ms/60000)%60, s=Math.floor(ms/1000)%60, f=ms%1000; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(f).padStart(3,'0')}`; };
+  const text = S.scriptName.toLowerCase().endsWith('.txt') ? S.cues.map(c => c.text).join('\n\n') + '\n' : S.cues.map((c,i) => `${i+1}\n${time(c.startMs)} --> ${time(c.endMs)}\n${c.text}`).join('\n\n') + '\n';
+  try {
+    const handle = S.srtHandle || await S.dirHandle.getFileHandle(S.scriptName, { create: true });
+    const writer = await handle.createWritable(); await writer.write(text); await writer.close(); S.srtHandle = handle;
+    if (!quiet) toast(`Đã lưu ${S.scriptName} trong thư mục dự án.`);
+  } catch (e) { if (!quiet) toast(`Không thể lưu kịch bản: ${e.message}`,true); else toast(`Không thể tự lưu SRT: ${e.message}`, true); }
+}
+function scheduleSrtSave() {
+  if (!S.dirHandle || !S.scriptName?.toLowerCase().endsWith('.srt')) return;
+  clearTimeout(S.scriptSaveTimer);
+  S.scriptSaveTimer = setTimeout(() => saveScriptToProject(true), 450);
+}
+$('addImageBtn').addEventListener('click', () => {
+  if (!S.dirHandle) { toast('Hãy mở thư mục dự án bằng Chrome hoặc Edge trước khi thêm ảnh.', true); return; }
+  newImageInput.click();
+});
+newImageInput.addEventListener('change', async () => {
+  const file = newImageInput.files[0]; newImageInput.value = '';
+  if (!file) return;
+  try {
+    const ext = file.name.toLowerCase().endsWith('.jpeg') ? '.jpeg' : file.name.toLowerCase().endsWith('.jpg') ? '.jpg' : '.png';
+    const base = file.name.slice(0, -ext.length).replace(/[^\w.-]+/g, '-');
+    if (!base) throw new Error('Tên ảnh không hợp lệ');
+    const imageHandle = await S.dirHandle.getFileHandle(base + ext, { create: true });
+    const writer = await imageHandle.createWritable(); await writer.write(await file.arrayBuffer()); await writer.close();
+    const bitmap = await createImageBitmap(file);
+    const cfg = defaultConfig(base, bitmap.width, bitmap.height);
+    bitmap.close();
+    const cfgName = base + '.annotation.json', cfgHandle = await S.dirHandle.getFileHandle(cfgName, { create: true });
+    const cfgWriter = await cfgHandle.createWritable(); await cfgWriter.write(JSON.stringify(cfg, null, 2)); await cfgWriter.close();
+    const imgUrl = URL.createObjectURL(file);
+    const scene = { name: base, imgName: base + ext, cfgName, cfg, cfgHandle, imgUrl, hasConfig: true, cueIndex: null, cueIndexes: null };
+    S.scenes.push(scene);
+    mapCuesByOrder(true);
+    refreshScenes(); loadScene(S.scenes.length - 1);
+    toast(`Đã thêm ${base} và tự tạo ${cfgName}.`);
+  } catch (e) { toast(`Không thể thêm ảnh: ${e.message}`, true); }
+});
+$('audioBtn').addEventListener('click', () => audioInput.click());
+audioInput.addEventListener('change', async () => {
+  const file = audioInput.files[0]; audioInput.value = '';
+  if (!file) return;
+  if (S.idx < 0) { toast('Hãy chọn cảnh trước khi nạp audio.', true); return; }
+  S.audioByScene.set(S.idx, file); updateAudioButton();
+  const sc = S.scenes[S.idx];
+  await syncSceneToAudio(S.idx, file, true);
+  if (S.dirHandle) saveSceneAudio(sc, new File([file], `${sc.name}-voice${file.name.slice(file.name.lastIndexOf('.')) || '.wav'}`, { type: file.type })).catch(e => toast(`Đã gắn audio nhưng không lưu được: ${e.message}`, true));
+  toast(`Đã gắn audio và đồng bộ thời lượng vẽ cho cảnh ${sc.name}.`);
+});
+function formatDurationMs(ms) { return `${(ms / 1000).toFixed(2)} giây`; }
+function updateAudioButton() {
+  const file = S.audioByScene.get(S.idx), sc = S.scenes[S.idx], audioMs = Number(sc?.cfg?.audioDurationMs) || 0;
+  $('audioBtn').textContent = file ? `Audio cảnh: ${file.name}` : 'Nạp audio cho cảnh';
+  $('syncAudioBtn').disabled = !file;
+  $('audioTiming').textContent = audioMs
+    ? `Audio ${formatDurationMs(audioMs)} · cảnh vẽ ${formatDurationMs(sc.cfg.sceneDurationMs)} (đã gồm 0,5 giây giữ hình cuối).`
+    : file ? 'Audio đã gắn; đang chờ đọc thời lượng để đồng bộ.' : 'Chưa có audio để đồng bộ thời lượng cảnh.';
+}
+function readAudioDurationMs(file) {
+  return new Promise((resolve, reject) => {
+    const audio = document.createElement('audio'), url = URL.createObjectURL(file);
+    const finish = callback => value => { URL.revokeObjectURL(url); callback(value); };
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = finish(() => Number.isFinite(audio.duration) && audio.duration > 0
+      ? resolve(Math.round(audio.duration * 1000)) : reject(new Error('Không đọc được thời lượng audio.')));
+    audio.onerror = finish(() => reject(new Error('Không đọc được metadata audio.')));
+    audio.src = url;
+  });
+}
+async function syncSceneToAudio(index, file = S.audioByScene.get(index), announce = false) {
+  const sc = S.scenes[index];
+  if (!sc || !sc.cfg || !file) return false;
+  try {
+    const audioMs = await readAudioDurationMs(file);
+    const oldMs = Number(sc.cfg.audioDurationMs) || 0;
+    if (Math.abs(oldMs - audioMs) < 20 && sc.cfg.timingMode === 'audio') { updateAudioButton(); return true; }
+    sc.cfg.audioDurationMs = audioMs;
+    sc.cfg.audioHoldMs = AUDIO_HOLD_MS;
+    sc.cfg.timingMode = 'audio';
+    if (assignedCue(sc)) applyCueTiming(sc, true);
+    else {
+      const revealWindow = Math.max(500, audioMs);
+      const ordered = [...(sc.cfg.elements || [])].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+      ordered.forEach((e, i) => {
+        const start = Math.floor(revealWindow * i / ordered.length), end = Math.floor(revealWindow * (i + 1) / ordered.length);
+        e.reveal.startMs = start; e.reveal.durationMs = Math.max(100, end - start);
+      });
+      sc.cfg.sceneDurationMs = Math.max(1000, audioMs + AUDIO_HOLD_MS);
+      if (index === S.idx) { S.cfg = sc.cfg; syncEditor(); renderList(); renderSubs(); setTime(0); }
+    }
+    S.dirty.add(index); updateSaveBtns(); updateAudioButton();
+    if (announce) toast(`Đã khớp cảnh với audio ${formatDurationMs(audioMs)}; chừa 0,5 giây cuối.`);
+    return true;
+  } catch (e) {
+    updateAudioButton();
+    if (announce) toast(`Đã gắn audio nhưng không thể đồng bộ thời lượng: ${e.message}`, true);
+    return false;
+  }
+}
+$('syncAudioBtn').addEventListener('click', () => syncSceneToAudio(S.idx, undefined, true));
+$('ttsBtn').addEventListener('click', generateSceneVoice);
+$('ttsSpeed').addEventListener('input', e => { $('ttsSpeedValue').textContent = `${(+e.target.value).toFixed(2)}×`; });
+const ttsBuiltInVoiceOptions = {
+  vieneu: ['Hải Đăng', 'Mai Anh', 'Trúc Ly', 'Thiện Minh', 'Thùy Dung', 'Quang Sơn', 'Ngọc Trân', 'Phạm Tuyên', 'Minh Đức', 'Adam', 'Thái Sơn', 'Mỹ Duyên'],
+  kokoro: ['diem_trinh', 'hung_thinh', 'mai_linh', 'mai_loan', 'manh_dung', 'my_yen', 'ngoc_huyen', 'phat_tai', 'thanh_dat', 'thuc_trinh', 'tuan_ngoc', 'storyvert', 'duc_an', 'duc_duy']
+};
+let customVieNeuVoices = [];
+function updateTtsEngine() {
+  const engine = $('ttsEngine').value, speakers = $('ttsSpeaker'), previous = speakers.value;
+  speakers.replaceChildren();
+  const addOption = (value, label) => { const option = document.createElement('option'); option.value = value; option.textContent = label; speakers.append(option); };
+  ttsBuiltInVoiceOptions[engine].forEach(voice => addOption(voice, voice));
+  if (engine === 'vieneu' && customVieNeuVoices.length) {
+    const group = document.createElement('optgroup'); group.label = 'Giọng mẫu của bạn'; speakers.append(group);
+    customVieNeuVoices.forEach(voice => { const option = document.createElement('option'); option.value = voice.id; option.textContent = `★ ${voice.name}`; group.append(option); });
+  }
+  if ([...speakers.options].some(option => option.value === previous)) speakers.value = previous;
+  $('ttsSpeed').disabled = engine === 'vieneu';
+  $('ttsSpeed').parentElement.style.opacity = engine === 'vieneu' ? '.55' : '1';
+  $('cloneBox').hidden = engine !== 'vieneu';
+  $('ttsEngineHelp').textContent = engine === 'vieneu'
+    ? 'VieNeu-TTS clone và tạo audio ngay trên laptop bằng CPU/ONNX. “Chỉ chạy offline” khóa việc tải model sau khi model đã có trong máy; file thu âm không được gửi tới VieNeu.'
+    : 'Kokoro-Vietnamese chạy cục bộ; có thể dùng CPU hoặc CUDA (nếu PyTorch hỗ trợ). Lần đầu cần mạng để tải model.';
+}
+$('ttsEngine').addEventListener('change', updateTtsEngine);
+async function refreshCustomVieNeuVoices() {
+  try {
+    const response = await fetch('/api/tts-voices', { cache: 'no-store' });
+    if (!response.ok) throw new Error();
+    const data = await response.json();
+    customVieNeuVoices = Array.isArray(data.voices) ? data.voices.filter(voice => voice && typeof voice.id === 'string' && typeof voice.name === 'string') : [];
+  } catch (_) { customVieNeuVoices = []; }
+  updateTtsEngine();
+}
+$('cloneVoiceBtn').addEventListener('click', async () => {
+  const file = $('cloneRefFile').files[0], name = $('cloneVoiceName').value.trim(), button = $('cloneVoiceBtn');
+  if (!file) { toast('Hãy chọn đoạn thu âm làm mẫu.', true); return; }
+  if (!name) { toast('Hãy đặt tên cho giọng mới.', true); return; }
+  if (!$('cloneConsent').checked) { toast('Hãy xác nhận quyền sử dụng giọng trong file thu âm.', true); return; }
+  if (file.size > 15 * 1024 * 1024) { toast('File thu âm cần nhỏ hơn hoặc bằng 15 MB.', true); return; }
+  button.disabled = true; button.textContent = 'Đang xử lý giọng mẫu…';
+  try {
+    const audioDataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('Không thể đọc file thu âm.')); reader.readAsDataURL(file); });
+    const response = await fetch('/api/voice-clone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, audioDataUrl, fileName: file.name, acknowledged: true, offline: $('ttsOffline').checked }) });
+    let data = {}; try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error(data.error || `Lỗi máy chủ (${response.status})`);
+    $('cloneRefFile').value = ''; $('cloneVoiceName').value = ''; $('cloneConsent').checked = false;
+    await refreshCustomVieNeuVoices();
+    $('ttsEngine').value = 'vieneu'; updateTtsEngine(); $('ttsSpeaker').value = data.id;
+    toast(`Đã tạo giọng mẫu “${data.name}”. Bạn có thể chọn nó như các giọng có sẵn.`);
+  } catch (error) { toast(`Không tạo được giọng mẫu: ${error.message}`, true); }
+  finally { button.disabled = false; button.textContent = 'Tạo & thêm vào danh sách giọng'; }
+});
+refreshCustomVieNeuVoices();
+async function generateSceneVoice() {
+  const button = $('ttsBtn'), text = $('ttsText').value.trim();
+  if (S.idx < 0) { toast('Hãy chọn một cảnh trước.', true); return; }
+  if (!text) { toast('Chưa có lời thoại cho cảnh này.', true); return; }
+  button.disabled = true; button.textContent = 'Đang tạo giọng đọc…';
+  try {
+    const response = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ engine: $('ttsEngine').value, text, speaker: $('ttsSpeaker').value, speed: Number($('ttsSpeed').value), offline: $('ttsOffline').checked }) });
+    if (!response.ok) {
+      let message = `Lỗi máy chủ (${response.status})`;
+      try { message = (await response.json()).error || message; } catch (_) {}
+      throw new Error(message);
+    }
+    const blob = await response.blob(), sc = S.scenes[S.idx];
+    const audioFile = new File([blob], `${sc.name}-voice.wav`, { type: 'audio/wav' });
+    S.audioByScene.set(S.idx, audioFile); updateAudioButton();
+    const preview = $('ttsPreview');
+    if (preview.dataset.url) URL.revokeObjectURL(preview.dataset.url);
+    preview.dataset.url = URL.createObjectURL(blob); preview.src = preview.dataset.url; preview.hidden = false;
+    await syncSceneToAudio(S.idx, audioFile, true);
+    await saveSceneAudio(sc, audioFile);
+    toast(`Đã tạo lời đọc, gắn audio và đồng bộ thời lượng cảnh ${sc.name}.`);
+  } catch (e) { toast(`Không tạo được lời đọc: ${e.message}`, true); }
+  finally { button.disabled = false; button.textContent = 'Tạo lời đọc WAV cho cảnh'; }
+}
+async function saveSceneAudio(sc, file) {
+  if (!S.dirHandle) return;
+  const handle = await S.dirHandle.getFileHandle(file.name, { create: true });
+  const writer = await handle.createWritable(); await writer.write(file); await writer.close();
+}
 function baseName(n) { const ext = IMG_EXT.find(e => n.toLowerCase().endsWith(e)); return ext ? n.slice(0, -ext.length) : null; }
-const pairedImageNames = names => names.filter(n => { const base = baseName(n); return base !== null && names.includes(base + '.annotation.json'); }).sort();
+const pairedImageNames = names => names.filter(n => baseName(n) !== null).sort();
+function defaultConfig(name, width, height) { return { sceneId: name, canvas: { width, height }, sceneDurationMs: 8000, elements: [] }; }
+function refreshScenes() {
+  const scenes = S.scenes, sel = $('sceneSel');
+  sel.innerHTML = scenes.map((s, i) => `<option value="${i}">${i+1}. ${s.name}${s.hasConfig ? '' : ' (chưa chú thích)'}</option>`).join('');
+  $('sceneCount').textContent = `${scenes.length} cảnh · ${scenes.filter(s=>s.hasConfig).length} đã thiết lập`;
+  $('renderProjectBtn').disabled = scenes.length === 0;
+  renderCueMappings();
+}
 
 async function loadPairs(names, getFile, getHandle) {
   const imgNames = pairedImageNames(names);
@@ -177,21 +669,27 @@ async function loadPairs(names, getFile, getHandle) {
     let cfg = null, cfgHandle = null;
     if (names.includes(cfgName)) {
       try { cfg = JSON.parse(await (await getFile(cfgName)).text()); }
-      catch (e) { toast(`跳过 ${cfgName}：JSON 解析失败`, true); }
+      catch (e) { toast(`Bỏ qua ${cfgName}: không thể đọc JSON`, true); }
       cfgHandle = getHandle(cfgName);
     }
     const url = URL.createObjectURL(await getFile(inm));
-    scenes.push({ name: base, imgName: inm, cfgName, cfg, cfgHandle, imgUrl: url, hasConfig: !!cfg });
+    const voiceName = names.find(n => n.toLowerCase().startsWith((base + '-voice').toLowerCase()) && /\.(wav|mp3|m4a)$/i.test(n));
+    const voiceFile = voiceName ? await getFile(voiceName) : null;
+    const savedCueIndexes = Array.isArray(cfg?.storyCueIndexes) ? cfg.storyCueIndexes.map(index => index - 1).filter(index => index >= 0 && index < S.cues.length) : [];
+    const savedCue = savedCueIndexes[0] ?? (Number.isInteger(cfg?.storyCueIndex) ? cfg.storyCueIndex - 1 : null);
+    scenes.push({ name: base, imgName: inm, cfgName, cfg, cfgHandle, imgUrl: url, hasConfig: !!cfg, voiceFile, cueIndex: savedCue, cueIndexes: savedCueIndexes.length ? savedCueIndexes : (savedCue !== null && savedCue >= 0 && savedCue < S.cues.length ? [savedCue] : null) });
   }
-  if (!scenes.length) { toast('目录里没有图片', true); return; }
-  S.scenes = scenes; S.dirty.clear();
+  if (!scenes.length) { toast('Không có ảnh nào trong thư mục', true); return; }
+  S.scenes = scenes; S.dirty.clear(); S.audioByScene = new Map();
+  mapCuesByOrder(false);
+  scenes.forEach((scene, i) => { if (scene.voiceFile) S.audioByScene.set(i, scene.voiceFile); });
   const sel = $('sceneSel');
-  sel.innerHTML = scenes.map((s, i) => `<option value="${i}">${i+1}. ${s.name}${s.hasConfig ? '' : '（未标注）'}</option>`).join('');
+  refreshScenes();
   sel.disabled = $('prevBtn').disabled = $('nextBtn').disabled = false;
-  $('sceneCount').textContent = `共 ${scenes.length} 张（${scenes.filter(s=>s.hasConfig).length} 张带标注）`;
   $('hint').hidden = true; canvas.hidden = false; $('side').hidden = false;
   $('playBtn').disabled = $('timeline').disabled = false;
-  if (!canFS) toast('当前浏览器不支持直接写回，保存将改为下载', false);
+  $('renderBtn').disabled = false;
+  if (!canFS) toast('Trình duyệt này không hỗ trợ ghi trực tiếp; thao tác lưu sẽ tải tệp xuống.', false);
   loadScene(0);
 }
 
@@ -201,20 +699,31 @@ $('prevBtn').addEventListener('click', () => loadScene(S.idx - 1));
 $('nextBtn').addEventListener('click', () => loadScene(S.idx + 1));
 function loadScene(i) {
   if (i < 0 || i >= S.scenes.length) return;
-  pause(); S.idx = i; S.sel = 0; S.time = 0;
+  pause(); S.idx = i; S.sel = 0; S.time = 0; updateAudioButton();
   $('sceneSel').value = i;
   const sc = S.scenes[i];
+  const cue = assignedCue(sc);
+  $('ttsText').value = sceneSpeechText(sc) || (sc.cfg?.storyBasis || sc.cfg?.elements?.map(e => e.subtitle).filter(Boolean).join(' ') || '');
+  const savedAudio = S.audioByScene.get(i), preview = $('ttsPreview');
+  if (preview.dataset.url) URL.revokeObjectURL(preview.dataset.url);
+  if (savedAudio) { preview.dataset.url = URL.createObjectURL(savedAudio); preview.src = preview.dataset.url; preview.hidden = false; }
+  else { preview.removeAttribute('src'); preview.hidden = true; }
   const img = new Image();
   img.onload = () => {
     S.source = img;
-    if (!sc.cfg) sc.cfg = { sceneId: sc.name, canvas: { width: img.naturalWidth, height: img.naturalHeight }, sceneDurationMs: 8000, elements: [] };
+    if (!sc.cfg) {
+      sc.cfg = defaultConfig(sc.name, img.naturalWidth, img.naturalHeight);
+      if (assignedCue(sc)) { ensureCueRegions(sc, true); applyCueTiming(sc, true); }
+      sc.hasConfig = true; persistNewAnnotation(sc);
+    }
     if (!sc.cfg.canvas || !sc.cfg.canvas.width) sc.cfg.canvas = { width: img.naturalWidth, height: img.naturalHeight };
     if (!Array.isArray(sc.cfg.elements)) sc.cfg.elements = [];
     S.cfg = sc.cfg; S.cfgHandle = sc.cfgHandle;
+    if (savedAudio) syncSceneToAudio(i, savedAudio, false);
     samplePaper();
     updateSaveBtns(); syncEditor(); renderList(); renderSubs(); setTime(0); // 默认停在 0（未播放）→ 显示完整图片
   };
-  img.onerror = () => toast('图片加载失败：' + sc.imgName, true);
+  img.onerror = () => toast('Không thể tải ảnh: ' + sc.imgName, true);
   img.src = sc.imgUrl;
 }
 function samplePaper() {
@@ -306,9 +815,9 @@ function drawOverlay() {
 function selectElem(i) { S.sel = i; syncEditor(); renderList(); renderSubs(); render(); }
 function renderList() {
   const arr = els();
-  $('elemCount').textContent = `共 ${arr.length} 个`;
+  $('elemCount').textContent = `${arr.length} mục`;
   $('elist').innerHTML = arr.map((e, i) =>
-    `<li draggable="true" data-i="${i}" class="${i===S.sel?'sel':''}"><span class="grip">⋮⋮</span><span class="o">#${i+1}</span><span class="t">${(e.reveal.startMs/1000).toFixed(1)}s</span><span class="nm">${escapeHtml(e.label || '')}</span></li>`
+    `<li draggable="true" data-i="${i}" class="${i===S.sel?'sel':''}"><span class="grip">⋮⋮</span><span class="o">#${i+1}</span><span class="t">${((e.reveal.startMs+projectOffsetMs())/1000).toFixed(1)}s</span><span class="nm">${escapeHtml(e.label || '')}</span></li>`
   ).join('');
   $('elist').querySelectorAll('li').forEach(li => {
     const i = +li.dataset.i;
@@ -332,7 +841,7 @@ function renderSubs() {
   const arr = els();
   $('sublist').innerHTML = arr.map((e, i) => {
     const txt = (e.subtitle || '').trim();
-    return `<li data-i="${i}" class="${i===S.sel?'sel':''} ${txt?'':'empty'}"><span class="o">#${i+1}</span><span class="s">${txt ? escapeHtml(txt) : '（无字幕）'}</span></li>`;
+    return `<li data-i="${i}" class="${i===S.sel?'sel':''} ${txt?'':'empty'}"><span class="o">#${i+1}</span><span class="s">${txt ? escapeHtml(txt) : '(không có phụ đề)'}</span></li>`;
   }).join('');
   $('sublist').querySelectorAll('li').forEach(li => li.addEventListener('click', () => selectElem(+li.dataset.i)));
 }
@@ -373,19 +882,34 @@ function applyEditor() {
   markDirty(); renderList(); renderSubs(); setTime(Math.min(S.time, totalMs())); render();
 }
 F.forEach(id => { if (id !== 'f_dur') $(id).addEventListener('input', applyEditor); });
-$('f_sub').addEventListener('input', () => { const e = els()[S.sel]; if (!e) return; e.subtitle = $('f_sub').value; markDirty(); renderSubs(); });
+$('f_sub').addEventListener('input', () => {
+  const e = els()[S.sel]; if (!e) return;
+  e.subtitle = $('f_sub').value;
+  if (Number.isInteger(e.cueIndex) && S.cues[e.cueIndex]) {
+    S.cues[e.cueIndex].text = e.subtitle;
+    e.label = e.subtitle.slice(0, 32) || e.label;
+    $('scriptText').value = S.cues.map(cue => cue.text).join('\n');
+    S.storyScenes = groupCueScenes(S.cues, 30, 25, 35); renderScript(); scheduleSrtSave();
+  }
+  markDirty(); renderSubs();
+});
 
 // ---------- 增删 ----------
 $('addBtn').addEventListener('click', () => {
   if (!S.cfg) return;
   const arr = els(), W = S.cfg.canvas.width, H = S.cfg.canvas.height;
   const seq = arr.length + 1;
+  const scene = S.scenes[S.idx];
+  const cue = assignedCues(scene).find(item => !arr.some(element => element.cueIndex === item.index - 1)) || assignedCue(scene);
   const lastEnd = arr.length ? Math.max(...arr.map(endMs)) : 300;
-  const e = { id: `region_${seq}`, label: '新模块', sequence: seq, narrativeRole: '', type: 'object', subtitle: '',
+  const cueStart = cue ? 0 : lastEnd + 200;
+  const cueDuration = cue ? Math.max(700, cue.endMs - cue.startMs) : 2000;
+  const label = cue ? cue.text.slice(0, 32) : 'Mô-đun mới';
+  const e = { id: `region_${seq}`, label, sequence: seq, narrativeRole: '', type: 'object', subtitle: cue?.text || '', cueIndex: cue ? cue.index - 1 : undefined,
     region: { x: Math.round(W*0.1), y: Math.round(H*0.1), width: Math.round(W*0.25), height: Math.round(H*0.3) },
-    reveal: { direction: 'top_to_bottom', startMs: lastEnd + 200, durationMs: 2000, maskPaddingPx: 22, protectedRegions: [] },
+    reveal: { direction: 'top_to_bottom', startMs: cue ? cueStart : lastEnd + 200, durationMs: cueDuration, maskPaddingPx: 22, protectedRegions: [] },
     handPath: {} };
-  syncHandPath(e); arr.push(e); S.sel = arr.length - 1; markDirty(); syncEditor(); renderList(); renderSubs(); render();
+  syncHandPath(e); arr.push(e); if (cue) applyCueTiming(S.scenes[S.idx], true); S.sel = arr.length - 1; markDirty(); syncEditor(); renderList(); renderSubs(); render();
 });
 $('delBtn').addEventListener('click', () => {
   const arr = els(); if (S.sel < 0 || S.sel >= arr.length) return;
@@ -428,7 +952,7 @@ function setTime(v) {
   const dur = totalMs();
   S.time = clamp(v, 0, dur);
   $('timeline').value = dur ? Math.round(S.time/dur*1000) : 0;
-  $('tlabel').textContent = `${(S.time/1000).toFixed(2)}s / ${(dur/1000).toFixed(2)}s`;
+  $('tlabel').textContent = `${(S.time/1000).toFixed(2)}s / ${(dur/1000).toFixed(2)}s · thời gian cảnh`;
   render();
 }
 $('timeline').addEventListener('input', e => { pause(); setTime((+e.target.value)/1000 * totalMs()); });
@@ -438,7 +962,7 @@ function pause() { S.playing = false; $('playBtn').textContent = '▶'; }
 function tick(ts) { if (!S.playing) return; setTime(S.time + (ts - S.last)); S.last = ts; if (S.time >= totalMs()) { pause(); return; } requestAnimationFrame(tick); }
 
 // ---------- 保存 ----------
-function markDirty() { S.dirty.add(S.idx); $('dirtyFlag').textContent = '● 未保存'; updateSaveBtns(); }
+function markDirty() { S.dirty.add(S.idx); $('dirtyFlag').textContent = '● Chưa lưu'; updateSaveBtns(); }
 function updateSaveBtns() { $('saveBtn').disabled = !S.dirty.has(S.idx); $('saveAllBtn').disabled = S.dirty.size === 0; }
 $('saveBtn').addEventListener('click', () => saveScene(S.idx));
 $('saveAllBtn').addEventListener('click', async () => { for (const i of [...S.dirty]) await saveScene(i); });
@@ -451,15 +975,146 @@ async function saveScene(i) {
     let handle = sc.cfgHandle;
     if (!handle && S.dirHandle && S.dirHandle.getFileHandle) handle = await S.dirHandle.getFileHandle(sc.cfgName, { create: true });
     if (handle && handle.createWritable) {
-      if (handle.requestPermission) { const perm = await handle.requestPermission({ mode: 'readwrite' }); if (perm !== 'granted') throw new Error('未授权写入'); }
+      if (handle.requestPermission) { const perm = await handle.requestPermission({ mode: 'readwrite' }); if (perm !== 'granted') throw new Error('Chưa được cấp quyền ghi'); }
       const w = await handle.createWritable(); await w.write(text); await w.close();
       sc.cfgHandle = handle; sc.hasConfig = true;
     } else { downloadText(sc.cfgName, text); }
     S.dirty.delete(i); if (i === S.idx) $('dirtyFlag').textContent = '';
-    updateSaveBtns(); toast(`已保存：${sc.name}`);
-  } catch (e) { toast(`保存失败：${e.message}`, true); }
+    updateSaveBtns(); toast(`Đã lưu: ${sc.name}`);
+  } catch (e) { toast(`Không thể lưu: ${e.message}`, true); }
 }
 function downloadText(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
+
+// ---------- Xem trước MP4 trước khi tải ----------
+let previewVideoUrl = null, previewVideoName = '';
+function closeVideoPreview() {
+  const modal = $('videoPreview'), player = $('videoPreviewPlayer');
+  player.pause(); player.removeAttribute('src'); player.load();
+  if (previewVideoUrl) URL.revokeObjectURL(previewVideoUrl);
+  previewVideoUrl = null; previewVideoName = '';
+  modal.hidden = true;
+}
+function showVideoPreview(blob, filename, info) {
+  closeVideoPreview();
+  previewVideoUrl = URL.createObjectURL(blob); previewVideoName = filename;
+  $('videoPreviewTitle').textContent = 'Xem trước video đã dựng';
+  $('videoPreviewInfo').textContent = info || filename;
+  $('videoPreviewPlayer').src = previewVideoUrl;
+  $('videoPreview').hidden = false;
+  $('videoPreviewPlayer').focus();
+}
+function downloadPreviewVideo() {
+  if (!previewVideoUrl || !previewVideoName) return;
+  const a = document.createElement('a'); a.href = previewVideoUrl; a.download = previewVideoName; a.click();
+  toast(`Đang tải ${previewVideoName}.`);
+}
+$('closeVideoPreview').addEventListener('click', closeVideoPreview);
+$('cancelVideoDownload').addEventListener('click', closeVideoPreview);
+$('downloadVideoBtn').addEventListener('click', downloadPreviewVideo);
+$('videoPreview').addEventListener('click', event => { if (event.target === $('videoPreview')) closeVideoPreview(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('videoPreview').hidden) closeVideoPreview(); });
+
+// ---------- Xuất MP4 qua máy chủ Python cục bộ ----------
+$('renderBtn').addEventListener('click', renderCurrentScene);
+async function renderCurrentScene() {
+  if (!S.cfg || !S.source || S.idx < 0) return;
+  const button = $('renderBtn'), sc = S.scenes[S.idx];
+  button.disabled = true; button.textContent = 'Đang dựng MP4…';
+  try {
+    const imageDataUrl = await imageToDataUrl(S.source);
+    const audioFile = S.audioByScene.get(S.idx);
+    const audioDataUrl = audioFile ? await fileToDataUrl(audioFile) : null;
+    const response = await fetch('/api/render', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sceneName: sc.name, imageDataUrl, audioDataUrl, annotation: S.cfg, renderProfile: $('renderProfile').value })
+    });
+    if (!response.ok) {
+      let message = `Lỗi máy chủ (${response.status})`;
+      try { message = (await response.json()).error || message; } catch (_) {}
+      throw new Error(message);
+    }
+    const blob = await response.blob(), filename = `${sc.name}-whiteboard.mp4`;
+    showVideoPreview(blob, filename, 'Bản xem trước của cảnh hiện tại. Kiểm tra hình vẽ, nhịp và audio trước khi tải.');
+  } catch (e) {
+    const hint = location.protocol === 'file:' ? ' Hãy mở lại bằng Mo-Preview-Desk.cmd.' : '';
+    toast(`Không thể xuất MP4: ${e.message}.${hint}`, true);
+  } finally { button.disabled = false; button.textContent = 'Xuất MP4 cảnh này'; }
+}
+$('renderProjectBtn').addEventListener('click', renderWholeProject);
+async function renderWholeProject() {
+  if (!S.scenes.length) return;
+  const incomplete = S.scenes.filter(s => !s.cfg || !Array.isArray(s.cfg.elements) || !s.cfg.elements.length);
+  if (incomplete.length) { toast(`Chưa thể xuất: cần ít nhất một mô-đun vẽ cho ${incomplete.map(s=>s.name).join(', ')}.`, true); return; }
+  if (S.dirty.size) {
+    for (const i of [...S.dirty]) await saveScene(i);
+    if (S.dirty.size) { toast('Hãy lưu hết thay đổi trước khi xuất video.', true); return; }
+  }
+  const button = $('renderProjectBtn'), oldText = button.textContent;
+  button.disabled = true;
+  try {
+    const scenes = [];
+    for (let i = 0; i < S.scenes.length; i++) {
+      const sc = S.scenes[i];
+      button.textContent = `Chuẩn bị ${i+1}/${S.scenes.length}…`;
+      const imageDataUrl = await imageUrlToDataUrl(sc.imgUrl);
+      const audio = S.audioByScene.get(i);
+      scenes.push({ sceneName: sc.name, imageDataUrl, audioDataUrl: audio ? await fileToDataUrl(audio) : null, annotation: sc.cfg });
+    }
+    const jobId = crypto.randomUUID();
+    button.textContent = 'Đang tải dữ liệu và chuẩn bị…';
+    const request = fetch('/api/render-project', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, projectName: S.dirHandle?.name || 'project', renderProfile: $('renderProfile').value, scenes })
+    });
+    let response = null;
+    while (!response) {
+      response = await Promise.race([request, new Promise(resolve => setTimeout(() => resolve(null), 900))]);
+      if (!response) {
+        try {
+          const progressResponse = await fetch(`/api/render-progress?jobId=${encodeURIComponent(jobId)}`);
+          const progress = progressResponse.ok ? await progressResponse.json() : {};
+          if (progress.state === 'rendering') button.textContent = `Đang dựng cảnh ${progress.current}/${progress.total}: ${progress.scene}…`;
+          else if (progress.state === 'merging') button.textContent = `Đang ghép ${progress.total} cảnh thành MP4…`;
+          else if (progress.state === 'starting') button.textContent = 'Đang chuẩn bị bộ dựng…';
+        } catch (_) {}
+      }
+    }
+    if (!response.ok) {
+      let message = `Lỗi máy chủ (${response.status})`;
+      try { message = (await response.json()).error || message; } catch (_) {}
+      throw new Error(message);
+    }
+    const blob = await response.blob(), filename = `${safeFileName(S.dirHandle?.name || 'project')}-final.mp4`;
+    showVideoPreview(blob, filename, `Bản ghép hoàn chỉnh gồm ${S.scenes.length} cảnh. Chỉ tải xuống khi bạn đã duyệt.`);
+  } catch (e) {
+    const hint = location.protocol === 'file:' ? ' Hãy mở lại bằng Mo-Preview-Desk.cmd.' : '';
+    toast(`Không thể xuất MP4 toàn dự án: ${e.message}.${hint}`, true);
+  } finally { button.disabled = false; button.textContent = oldText; }
+}
+function safeFileName(value) { return String(value || 'project').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'project'; }
+function imageUrlToDataUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { try { const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img,0,0); resolve(c.toDataURL('image/png')); } catch(e) { reject(e); } };
+    img.onerror = () => reject(new Error('Không đọc được ảnh của một cảnh.'));
+    img.src = url;
+  });
+}
+async function persistNewAnnotation(sc) {
+  if (!S.dirHandle) return;
+  try {
+    const handle = await S.dirHandle.getFileHandle(sc.cfgName, { create: true });
+    const writer = await handle.createWritable(); await writer.write(JSON.stringify(sc.cfg, null, 2)); await writer.close();
+    sc.cfgHandle = handle;
+    refreshScenes(); toast(`Đã tự tạo ${sc.cfgName}.`);
+  } catch (e) { toast(`Không thể tự lưu annotation: ${e.message}`, true); }
+}
+function imageToDataUrl(img) {
+  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.getContext('2d').drawImage(img, 0, 0);
+  return c.toDataURL('image/png');
+}
+function fileToDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); }
 
 // ---------- 杂项 ----------
 document.addEventListener('keydown', e => {

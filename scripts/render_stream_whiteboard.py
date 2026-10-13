@@ -81,6 +81,10 @@ class RegionStreamRenderer:
         w = max(align, (int(round(w0 * scale)) // align) * align)
         h = max(align, (int(round(h0 * scale)) // align) * align)
         self.out_w, self.out_h = w, h
+        # Người dùng thường kéo các vùng sát nhau nhưng chừa ra vài pixel. Nới
+        # vùng khi render giúp triệt các đường seam mà không làm lộ vùng kế tiếp:
+        # _allowed_mask vẫn trừ toàn bộ vùng phía sau trước khi vẽ vùng hiện tại.
+        self.region_bleed_px = max(4, min(18, int(round(min(w, h) / 60))))
 
         # 标注画布坐标 → 输出坐标的缩放比
         cw = annotation["canvas"]["width"]
@@ -141,15 +145,42 @@ class RegionStreamRenderer:
     # ── 单区域的允许掩码：矩形 - 后续区域 - protectedRegions ──
     def _allowed_mask(self, element: dict, later_elements: list[dict]) -> np.ndarray:
         mask = np.zeros((self.out_h, self.out_w), dtype=bool)
-        x0, y0, x1, y1 = _scaled_rect(element["region"], self.sx, self.sy, self.out_w, self.out_h)
+        x0, y0, x1, y1 = self._bleed_rect(element["region"])
         mask[y0:y1, x0:x1] = True
         for later in later_elements:
-            lx0, ly0, lx1, ly1 = _scaled_rect(later["region"], self.sx, self.sy, self.out_w, self.out_h)
+            lx0, ly0, lx1, ly1 = self._bleed_rect(later["region"])
             mask[ly0:ly1, lx0:lx1] = False
         for prot in element.get("reveal", {}).get("protectedRegions", []):
             px0, py0, px1, py1 = _scaled_rect(prot, self.sx, self.sy, self.out_w, self.out_h)
             mask[py0:py1, px0:px1] = False
         return mask
+
+    def _bleed_rect(self, region: dict) -> tuple[int, int, int, int]:
+        """Expand an editor rectangle just enough to hide accidental seams."""
+        x0, y0, x1, y1 = _scaled_rect(region, self.sx, self.sy, self.out_w, self.out_h)
+        pad = self.region_bleed_px
+        return max(0, x0 - pad), max(0, y0 - pad), min(self.out_w, x1 + pad), min(self.out_h, y1 + pad)
+
+    def _uncovered_mask(self, elements: list[dict]) -> np.ndarray:
+        """Pixels omitted by every editor rectangle, used for a final repair pass."""
+        covered = np.zeros((self.out_h, self.out_w), dtype=bool)
+        for element in elements:
+            x0, y0, x1, y1 = self._bleed_rect(element["region"])
+            covered[y0:y1, x0:x1] = True
+        return ~covered
+
+    def _fill_uncovered(self, writer, frames: int, uncovered: np.ndarray) -> None:
+        """Sweep any missed pixels in at the end instead of leaving white holes."""
+        if frames <= 0 or not uncovered.any():
+            return
+        rows = np.arange(self.out_h, dtype=np.int32)[:, None]
+        for frame in range(frames):
+            progress = 1.0 if frames == 1 else (frame + 1) / frames
+            frontier = int(progress * self.out_h)
+            reveal = uncovered & (rows < frontier)
+            self.drawn[reveal] = self.color_img[reveal]
+            writer.write(self._snapshot_with_tip(self.out_w // 2, min(self.out_h - 1, frontier)))
+        self.drawn[uncovered] = self.color_img[uncovered]
 
     # ── 区域内笔迹路径 ──
     def _region_grid_path(self, allowed: np.ndarray) -> list[tuple[int, int]]:
@@ -185,11 +216,25 @@ class RegionStreamRenderer:
 
     # ── 落墨（限制在 allowed 内）──
     def _reveal_ink_segment(self, a: tuple[int, int], b: tuple[int, int], allowed: np.ndarray) -> None:
-        seg = np.zeros((self.out_h, self.out_w), dtype=np.uint8)
         thick = max(1, self.cfg.ink_reveal_radius * 2 + 1)
-        cv2.line(seg, a, b, 255, thickness=thick, lineType=cv2.LINE_AA)
-        revealed = (seg > 0) & self.ink_pixels & allowed
-        self.drawn[revealed] = self.ink_paint[revealed]
+        # OpenCV's antialias kernel reaches one pixel beyond the nominal half-width.
+        pad = thick // 2 + 2
+        left = max(0, min(a[0], b[0]) - pad)
+        right = min(self.out_w, max(a[0], b[0]) + pad + 1)
+        top = max(0, min(a[1], b[1]) - pad)
+        bottom = min(self.out_h, max(a[1], b[1]) + pad + 1)
+        if right <= left or bottom <= top:
+            return
+        # A stroke segment only touches a tiny crop. Allocating and masking a
+        # full 1080p frame for every sampled point was the dominant render cost.
+        seg = np.zeros((bottom - top, right - left), dtype=np.uint8)
+        cv2.line(seg, (a[0] - left, a[1] - top), (b[0] - left, b[1] - top),
+                 255, thickness=thick, lineType=cv2.LINE_AA)
+        crop = np.s_[top:bottom, left:right]
+        revealed = (seg > 0) & self.ink_pixels[crop] & allowed[crop]
+        target = self.drawn[crop]
+        paint = self.ink_paint[crop]
+        target[revealed] = paint[revealed]
 
     def _ink_stamp_cell(self, cell: tuple[int, int], allowed: np.ndarray) -> None:
         r, c = cell
@@ -213,7 +258,9 @@ class RegionStreamRenderer:
         m = disk[by0:by1, bx0:bx1] * allowed[y0:y1, x0:x1]
         inv = 1.0 - m
         target = self.drawn[y0:y1, x0:x1]
-        source = self.color_img[y0:y1, x0:x1].astype(np.float32)
+        # Keep this crop uint8; NumPy promotes it against the float mask. Avoid
+        # allocating a float32 copy of the whole brush area on every stamp.
+        source = self.color_img[y0:y1, x0:x1]
         for ch in range(3):
             target[:, :, ch] = target[:, :, ch] * inv + source[:, :, ch] * m
 
@@ -352,7 +399,7 @@ class RegionStreamRenderer:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(str(raw_path), fourcc, cfg.fps, (self.out_w, self.out_h))
         if not writer.isOpened():
-            raise RuntimeError("无法打开视频写入器")
+            raise RuntimeError("Không thể mở bộ ghi video")
 
         weight_sum = cfg.ink_weight + cfg.color_weight
         cur_ms = 0.0
@@ -413,6 +460,13 @@ class RegionStreamRenderer:
                     self._wash_brush(writer, color_frames, centers, allowed)
                 cur_ms += color_frames * ms_per_frame
 
+            # Dù người dùng chưa kéo các khung kín toàn ảnh, lượt cuối vẫn vá
+            # phần chưa thuộc vùng nào. Nó tránh đường trắng/hở nền giữa các vùng.
+            uncovered = self._uncovered_mask(elements)
+            repair_frames = max(2, round(320 * cfg.fps / 1000))
+            self._fill_uncovered(writer, repair_frames, uncovered)
+            cur_ms += repair_frames * ms_per_frame
+
             # 凝视：补到 total_ms，并确保结尾至少停留 0.5s 完整原图
             gaze_until = max(total_ms, cur_ms + 500)
             # 最终帧显示完整原图（凝视）
@@ -455,24 +509,24 @@ class RegionStreamRenderer:
 
 
 def _parse_args(argv=None):
-    p = argparse.ArgumentParser(description="SRT 白板动画整合渲染器（mask 编排 + stream 画法）")
-    p.add_argument("image", help="线稿图路径")
-    p.add_argument("annotation", help="同名 annotation.json 路径")
-    p.add_argument("output", help="输出 MP4 路径")
-    p.add_argument("hand", nargs="?", default=str(DEFAULT_HAND), help="手部素材 PNG（默认内置）")
-    p.add_argument("--total-ms", type=int, default=None, help="总时长；缺省用标注 sceneDurationMs")
-    p.add_argument("--bare-tip", action="store_true", help="不叠加笔尖/手部")
+    p = argparse.ArgumentParser(description="Trình dựng hoạt ảnh bảng trắng SRT (bố cục mặt nạ + nét vẽ liên tục)")
+    p.add_argument("image", help="Đường dẫn ảnh nét vẽ")
+    p.add_argument("annotation", help="Đường dẫn annotation.json cùng tên")
+    p.add_argument("output", help="Đường dẫn MP4 đầu ra")
+    p.add_argument("hand", nargs="?", default=str(DEFAULT_HAND), help="PNG hình bàn tay (mặc định có sẵn)")
+    p.add_argument("--total-ms", type=int, default=None, help="Tổng thời lượng; mặc định dùng sceneDurationMs trong chú thích")
+    p.add_argument("--bare-tip", action="store_true", help="Không chồng đầu bút/bàn tay")
     p.add_argument("--ink-path", default="grid", choices=["grid", "skeleton"],
-                   help="笔迹路径: grid 网格(默认); skeleton 骨架追踪")
+                   help="Đường đi nét vẽ: grid (lưới, mặc định); skeleton (bám xương nét)")
     p.add_argument("--color-fill", default="contour-wipe", choices=["contour-wipe", "brush"],
-                   help="上色: contour-wipe 轮廓扫描(默认); brush 沿轨迹刷")
+                   help="Tô màu: contour-wipe (quét theo đường viền, mặc định); brush (quét theo nét)")
     p.add_argument("--pause", default="heavy", choices=["heavy", "auto", "light", "off"],
-                   help="起笔段停顿节奏（预留，逐区域画法下影响较弱）")
+                   help="Nhịp dừng khi vẽ nét đầu (ảnh hưởng ít trong chế độ theo vùng)")
     p.add_argument("--fps", type=int, default=None)
     p.add_argument("--grid-edge", type=int, default=None)
     p.add_argument("--brush-radius", type=int, default=None)
     p.add_argument("--cap-long-edge", type=int, default=None,
-                   help="输出长边像素上限（预览可调小加速，默认 1080）")
+                   help="Giới hạn pixel cạnh dài đầu ra (giảm để xem trước nhanh hơn; mặc định 1080)")
     return p.parse_args(argv)
 
 
@@ -497,20 +551,20 @@ def main(argv=None) -> int:
     cfg = _build_cfg(args)
 
     print("=" * 56)
-    print("SRT 白板动画整合渲染器 (mask 编排 + stream 画法)")
+    print("Trình dựng hoạt ảnh bảng trắng SRT (bố cục mặt nạ + nét vẽ liên tục)")
     print("=" * 56)
 
     image_bgr = sr._imread_any(args.image)
     if image_bgr is None:
-        print(f"[err] 无法读取图片: {args.image}")
+        print(f"[err] Không thể đọc ảnh: {args.image}")
         return 1
     try:
         annotation = json.loads(Path(args.annotation).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
-        print(f"[err] 无法读取标注: {e}")
+        print(f"[err] Không thể đọc chú thích: {e}")
         return 1
     if not annotation.get("elements"):
-        print("[err] 标注中没有 elements")
+        print("[err] Chú thích không có elements")
         return 1
 
     total_ms = args.total_ms if args.total_ms is not None else annotation.get("sceneDurationMs")
@@ -524,16 +578,16 @@ def main(argv=None) -> int:
 
     hand_png = Path(args.hand) if args.hand else None
     renderer = RegionStreamRenderer(image_bgr, annotation, cfg, hand_png, args.bare_tip)
-    print(f"  输入: {args.image}")
-    print(f"  输出尺寸: {renderer.out_w}x{renderer.out_h}, 帧率: {cfg.fps}")
-    print(f"  区域数: {len(annotation['elements'])}, 总时长: {total_ms}ms, "
-          f"笔迹: {cfg.ink_path_mode}, 上色: {cfg.color_fill}")
+    print(f"  Đầu vào: {args.image}")
+    print(f"  Kích thước đầu ra: {renderer.out_w}x{renderer.out_h}, FPS: {cfg.fps}")
+    print(f"  Số vùng: {len(annotation['elements'])}, tổng thời lượng: {total_ms}ms, "
+          f"nét vẽ: {cfg.ink_path_mode}, tô màu: {cfg.color_fill}")
 
     renderer.render_to(raw_path, total_ms)
     final = sr.transcode_h264(raw_path, out_path)
 
     size_mb = final.stat().st_size / (1024 * 1024)
-    print(f"\n最终视频: {final}  ({size_mb:.2f} MB)")
+    print(f"\nVideo hoàn chỉnh: {final}  ({size_mb:.2f} MB)")
     print("=" * 56)
     print(f"OUTPUT={final}")
     return 0

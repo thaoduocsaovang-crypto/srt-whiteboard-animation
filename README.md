@@ -1,4 +1,6 @@
-# SRT 白板动画 Skill
+# Hoạt ảnh bảng trắng từ SRT
+
+> Bản hướng dẫn tiếng Việt đầy đủ: [README.vi.md](README.vi.md). Giao diện Preview Desk và các lệnh chính đã được Việt hóa; phần dưới đây là README gốc để tham chiếu kỹ thuật.
 
 将 SRT 字幕转为按叙事顺序绘制的白板手绘视频Skill。它结合了**分区遮罩编排**与**流式笔迹绘制**：每个元素跟随字幕依次出场，笔尖在区域内连续落墨，再逐步添彩，最终导出 MP4。
 

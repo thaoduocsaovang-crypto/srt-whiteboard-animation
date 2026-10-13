@@ -1,4 +1,4 @@
 interface:
-  display_name: "SRT 白板动画"
-  short_description: "把 SRT 字幕制作成可预览、可调整的流式笔迹白板动画"
-  default_prompt: "使用 $srt-whiteboard-animation 根据这份 SRT 字幕生成白板手绘动画。"
+  display_name: "Hoạt ảnh bảng trắng SRT"
+  short_description: "Tạo hoạt ảnh bảng trắng bằng nét vẽ liên tục từ phụ đề SRT, có thể xem trước và điều chỉnh"
+  default_prompt: "Dùng $srt-whiteboard-animation để tạo hoạt ảnh bảng trắng vẽ tay từ tệp phụ đề SRT này."
